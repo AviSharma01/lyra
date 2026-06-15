@@ -7,28 +7,31 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# JS
+node_modules/
+dist/
+dist-ssr/
 *.local
 
-# Editor directories and files
+# Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
+CLAUDE.md
+
+# macOS
+.DS_Store
+
 # Tauri / Rust
 src-tauri/target/
 
-# Secrets
+# Secrets (none yet, but lock it in now)
 .env
 .env.*
 !.env.example
-
-CLAUDE.md
