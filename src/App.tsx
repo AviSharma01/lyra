@@ -1,7 +1,8 @@
 import "./App.css";
+import { LyricPanel } from "./LyricPanel";
 
 function App() {
-  return <div>Hello</div>;
+  return <LyricPanel />;
 }
 
 export default App;
