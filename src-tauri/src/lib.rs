@@ -11,8 +11,7 @@ use tauri_plugin_positioner::{Position, WindowExt};
 fn start_poll<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     std::thread::spawn(move || loop {
         let state = spotify::fetch_playback();
-        eprintln!("[lyra] playback tick: {:?}", state.as_ref().map(|s| &s.track));
-        app.emit("playback", state).ok();
+app.emit("playback", state).ok();
         std::thread::sleep(std::time::Duration::from_secs(1));
     });
 }

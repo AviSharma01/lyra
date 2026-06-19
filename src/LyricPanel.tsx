@@ -1,84 +1,95 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { motion } from "motion/react";
+import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 interface SpotifyState {
   track: string;
   artist: string;
   duration_ms: number;
   position_ms: number;
-  is_playing: boolean;
+  state: "playing" | "paused" | "stopped";
 }
 
-const LYRICS = [
-  { original: "夜空の向こうに", translation: "Beyond the night sky" },
-  { original: "君の声が聞こえる", translation: "I can hear your voice" },
-  { original: "夜に駆ける", translation: "Racing through the night" },
-  { original: "星が降る夜に", translation: "On a night when stars fall" },
-  { original: "風が吹き抜けて", translation: "The wind sweeps through" },
-  { original: "君を呼ぶ声がする", translation: "A voice calls your name" },
-  { original: "遠い記憶の中で", translation: "Deep in distant memories" },
-  { original: "あの日に戻りたい", translation: "I want to return to that day" },
-];
+type Playback = SpotifyState | null;
 
-const ENTRY_HEIGHT = 80;
-const CENTER_SLOT = 2;
+function formatTime(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
 
 export function LyricPanel() {
-  const [activeIndex, setActiveIndex] = useState(CENTER_SLOT);
-  const [playback, setPlayback] = useState<SpotifyState | null | undefined>(
-    undefined
-  );
+  const [playback, setPlayback] = useState<Playback | undefined>(undefined);
+  const [displayPosition, setDisplayPosition] = useState(0);
+  const tickRef = useRef<{
+    positionMs: number;
+    timestamp: number;
+    playing: boolean;
+  } | null>(null);
 
   useEffect(() => {
-    invoke<SpotifyState | null>("get_playback")
-      .then(setPlayback)
-      .catch((e) => console.error("get_playback failed:", e));
+    const promise = listen<Playback>("playback", (event) => {
+      setPlayback(event.payload);
+    });
+    return () => {
+      promise.then((unlisten) => unlisten());
+    };
   }, []);
 
+  // Anchor interpolation to each incoming tick.
+  useEffect(() => {
+    if (playback == null) {
+      tickRef.current = null;
+      setDisplayPosition(0);
+      return;
+    }
+    tickRef.current = {
+      positionMs: playback.position_ms,
+      timestamp: Date.now(),
+      playing: playback.state === "playing",
+    };
+  }, [playback]);
+
+  // Interpolate position at 100ms for smooth progress.
   useEffect(() => {
     const id = setInterval(() => {
-      setActiveIndex((i) => (i + 1) % LYRICS.length);
-    }, 3000);
+      if (!tickRef.current) return;
+      const { positionMs, timestamp, playing } = tickRef.current;
+      const elapsed = playing ? Date.now() - timestamp : 0;
+      setDisplayPosition(positionMs + elapsed);
+    }, 100);
     return () => clearInterval(id);
   }, []);
 
-  const playbackLabel =
-    playback === undefined
-      ? "loading…"
-      : playback === null
-        ? "Spotify not running"
-        : `${playback.is_playing ? "▶" : "⏸"} ${playback.track} — ${playback.artist} (${Math.round(playback.position_ms / 1000)}s / ${Math.round(playback.duration_ms / 1000)}s)`;
+  const stateIcon =
+    playback?.state === "playing" ? "▶" : playback?.state === "stopped" ? "■" : "⏸";
+
+  const progress =
+    playback && playback.duration_ms > 0
+      ? Math.min(displayPosition / playback.duration_ms, 1)
+      : 0;
 
   return (
     <div className="panel">
-      <div style={{ padding: "8px 12px", fontSize: 11, opacity: 0.7, wordBreak: "break-word" }}>
-        {playbackLabel}
-      </div>
-      <div className="lyric-window">
-        <motion.div
-          className="lyric-track"
-          animate={{ y: (CENTER_SLOT - activeIndex) * ENTRY_HEIGHT }}
-          transition={{ type: "spring", stiffness: 280, damping: 32 }}
-        >
-          {LYRICS.map((lyric, i) => {
-            const distance = Math.abs(i - activeIndex);
-            const opacity = distance === 0 ? 1 : distance === 1 ? 0.45 : 0.2;
-            const scale = distance === 0 ? 1 : 0.94;
-            return (
-              <motion.div
-                key={i}
-                className="lyric-entry"
-                animate={{ opacity, scale }}
-                transition={{ duration: 0.35 }}
-              >
-                <div className="lyric-original">{lyric.original}</div>
-                <div className="lyric-translation">{lyric.translation}</div>
-              </motion.div>
-            );
-          })}
-        </motion.div>
-      </div>
+      {playback === undefined ? (
+        <p className="status-text">Loading…</p>
+      ) : playback === null ? (
+        <p className="status-text">Open Spotify to see lyrics</p>
+      ) : (
+        <div className="track-section">
+          <span className="play-state">{stateIcon}</span>
+          <p className="track-title">{playback.track}</p>
+          <p className="track-artist">{playback.artist}</p>
+          <div className="progress-bar">
+            <div className="progress-fill" style={{ width: `${progress * 100}%` }} />
+          </div>
+          <div className="progress-time">
+            <span>{formatTime(displayPosition)}</span>
+            <span>{formatTime(playback.duration_ms)}</span>
+          </div>
+        </div>
+      )}
+      {playback != null && (
+        <p className="lyric-placeholder">Lyrics coming in a later phase</p>
+      )}
     </div>
   );
 }

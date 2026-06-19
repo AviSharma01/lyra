@@ -4,7 +4,7 @@ pub struct SpotifyState {
     pub artist: String,
     pub duration_ms: u64,
     pub position_ms: u64,
-    pub is_playing: bool,
+    pub state: String,
 }
 
 pub fn parse_output(output: &str) -> Option<SpotifyState> {
@@ -18,9 +18,8 @@ pub fn parse_output(output: &str) -> Option<SpotifyState> {
     let duration_ms: u64 = lines.next()?.trim().parse().ok()?;
     let position_secs: f64 = lines.next()?.trim().parse().ok()?;
     let position_ms = (position_secs * 1000.0) as u64;
-    let state = lines.next()?.trim();
-    let is_playing = state == "playing";
-    Some(SpotifyState { track, artist, duration_ms, position_ms, is_playing })
+    let state = lines.next()?.trim().to_string();
+    Some(SpotifyState { track, artist, duration_ms, position_ms, state })
 }
 
 #[cfg(target_os = "macos")]
@@ -59,14 +58,14 @@ mod tests {
         assert_eq!(state.artist, "YOASOBI");
         assert_eq!(state.duration_ms, 234000);
         assert_eq!(state.position_ms, 47382);
-        assert!(state.is_playing);
+        assert_eq!(state.state, "playing");
     }
 
     #[test]
     fn parses_paused_track() {
         let raw = "Some Song\nSome Artist\n180000\n90.0\npaused\n";
         let state = parse_output(raw).expect("should parse");
-        assert!(!state.is_playing);
+        assert_eq!(state.state, "paused");
     }
 
     #[test]
