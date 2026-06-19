@@ -1,9 +1,19 @@
+mod spotify;
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 use tauri_plugin_positioner::{Position, WindowExt};
+
+#[tauri::command]
+fn get_playback() -> Option<spotify::SpotifyState> {
+    #[cfg(target_os = "macos")]
+    return spotify::fetch_playback();
+    #[cfg(not(target_os = "macos"))]
+    None
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -45,6 +55,7 @@ pub fn run() {
 
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![get_playback])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

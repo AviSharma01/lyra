@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { motion } from "motion/react";
+
+interface SpotifyState {
+  track: string;
+  artist: string;
+  duration_ms: number;
+  position_ms: number;
+  is_playing: boolean;
+}
 
 const LYRICS = [
   { original: "夜空の向こうに", translation: "Beyond the night sky" },
@@ -17,6 +26,15 @@ const CENTER_SLOT = 2;
 
 export function LyricPanel() {
   const [activeIndex, setActiveIndex] = useState(CENTER_SLOT);
+  const [playback, setPlayback] = useState<SpotifyState | null | undefined>(
+    undefined
+  );
+
+  useEffect(() => {
+    invoke<SpotifyState | null>("get_playback")
+      .then(setPlayback)
+      .catch((e) => console.error("get_playback failed:", e));
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -25,8 +43,18 @@ export function LyricPanel() {
     return () => clearInterval(id);
   }, []);
 
+  const playbackLabel =
+    playback === undefined
+      ? "loading…"
+      : playback === null
+        ? "Spotify not running"
+        : `${playback.is_playing ? "▶" : "⏸"} ${playback.track} — ${playback.artist} (${Math.round(playback.position_ms / 1000)}s / ${Math.round(playback.duration_ms / 1000)}s)`;
+
   return (
     <div className="panel">
+      <div style={{ padding: "8px 12px", fontSize: 11, opacity: 0.7, wordBreak: "break-word" }}>
+        {playbackLabel}
+      </div>
       <div className="lyric-window">
         <motion.div
           className="lyric-track"
