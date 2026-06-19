@@ -1,4 +1,4 @@
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SpotifyState {
     pub track: String,
     pub artist: String,

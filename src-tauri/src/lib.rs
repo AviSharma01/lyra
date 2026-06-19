@@ -3,9 +3,19 @@ mod spotify;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 use tauri_plugin_positioner::{Position, WindowExt};
+
+#[cfg(target_os = "macos")]
+fn start_poll<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+    std::thread::spawn(move || loop {
+        let state = spotify::fetch_playback();
+        eprintln!("[lyra] playback tick: {:?}", state.as_ref().map(|s| &s.track));
+        app.emit("playback", state).ok();
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    });
+}
 
 #[tauri::command]
 fn get_playback() -> Option<spotify::SpotifyState> {
@@ -22,6 +32,8 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            #[cfg(target_os = "macos")]
+            start_poll(app.handle().clone());
 
             let show_hide =
                 MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
