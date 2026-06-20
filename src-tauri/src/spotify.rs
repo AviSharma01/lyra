@@ -2,6 +2,7 @@
 pub struct SpotifyState {
     pub track: String,
     pub artist: String,
+    pub album: String,
     pub duration_ms: u64,
     pub position_ms: u64,
     pub state: String,
@@ -15,11 +16,12 @@ pub fn parse_output(output: &str) -> Option<SpotifyState> {
     let mut lines = output.lines();
     let track = lines.next()?.to_string();
     let artist = lines.next()?.to_string();
+    let album = lines.next()?.to_string();
     let duration_ms: u64 = lines.next()?.trim().parse().ok()?;
     let position_secs: f64 = lines.next()?.trim().parse().ok()?;
     let position_ms = (position_secs * 1000.0) as u64;
     let state = lines.next()?.trim().to_string();
-    Some(SpotifyState { track, artist, duration_ms, position_ms, state })
+    Some(SpotifyState { track, artist, album, duration_ms, position_ms, state })
 }
 
 #[cfg(target_os = "macos")]
@@ -29,10 +31,11 @@ pub fn fetch_playback() -> Option<SpotifyState> {
             tell application "Spotify"
                 set t to name of current track
                 set a to artist of current track
+                set al to album of current track
                 set d to (duration of current track) as string
                 set p to (player position) as string
                 set s to (player state) as string
-                return t & linefeed & a & linefeed & d & linefeed & p & linefeed & s
+                return t & linefeed & a & linefeed & al & linefeed & d & linefeed & p & linefeed & s
             end tell
         end if
     "#;
@@ -52,10 +55,11 @@ mod tests {
 
     #[test]
     fn parses_playing_track() {
-        let raw = "夜に駆ける\nYOASOBI\n234000\n47.382\nplaying\n";
+        let raw = "夜に駆ける\nYOASOBI\nThe Book\n234000\n47.382\nplaying\n";
         let state = parse_output(raw).expect("should parse");
         assert_eq!(state.track, "夜に駆ける");
         assert_eq!(state.artist, "YOASOBI");
+        assert_eq!(state.album, "The Book");
         assert_eq!(state.duration_ms, 234000);
         assert_eq!(state.position_ms, 47382);
         assert_eq!(state.state, "playing");
@@ -63,7 +67,7 @@ mod tests {
 
     #[test]
     fn parses_paused_track() {
-        let raw = "Some Song\nSome Artist\n180000\n90.0\npaused\n";
+        let raw = "Some Song\nSome Artist\nSome Album\n180000\n90.0\npaused\n";
         let state = parse_output(raw).expect("should parse");
         assert_eq!(state.state, "paused");
     }

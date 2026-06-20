@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { fetchLyrics, type LyricsResult } from "./lyrics/fetchLyrics";
 
 interface SpotifyState {
   track: string;
   artist: string;
+  album: string;
   duration_ms: number;
   position_ms: number;
   state: "playing" | "paused" | "stopped";
@@ -16,14 +18,22 @@ function formatTime(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// Stable key representing a track identity — changes trigger a new fetch.
+function trackKey(p: SpotifyState): string {
+  return `${p.track}::${p.artist}`;
+}
+
 export function LyricPanel() {
   const [playback, setPlayback] = useState<Playback | undefined>(undefined);
   const [displayPosition, setDisplayPosition] = useState(0);
+  const [lyrics, setLyrics] = useState<LyricsResult | "fetching" | null>(null);
+
   const tickRef = useRef<{
     positionMs: number;
     timestamp: number;
     playing: boolean;
   } | null>(null);
+  const fetchedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const promise = listen<Playback>("playback", (event) => {
@@ -59,6 +69,23 @@ export function LyricPanel() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!playback) {
+      fetchedKeyRef.current = null;
+      setLyrics(null);
+      return;
+    }
+    const key = trackKey(playback);
+    if (key === fetchedKeyRef.current) return;
+
+    fetchedKeyRef.current = key;
+    setLyrics("fetching");
+
+    fetchLyrics(playback.track, playback.artist, playback.album, playback.duration_ms)
+      .then(setLyrics)
+      .catch(() => setLyrics({ status: "none" }));
+  }, [playback]);
+
   const stateIcon =
     playback?.state === "playing" ? "▶" : playback?.state === "stopped" ? "■" : "⏸";
 
@@ -66,6 +93,20 @@ export function LyricPanel() {
     playback && playback.duration_ms > 0
       ? Math.min(displayPosition / playback.duration_ms, 1)
       : 0;
+
+  function renderLyricsStatus() {
+    if (lyrics === null) return null;
+    if (lyrics === "fetching") return <p className="lyric-placeholder">Fetching lyrics…</p>;
+    if (lyrics.status === "instrumental")
+      return <p className="lyric-placeholder">♪ Instrumental</p>;
+    if (lyrics.status === "none")
+      return <p className="lyric-placeholder">No synced lyrics available</p>;
+    return (
+      <p className="lyric-placeholder">
+        Synced lyrics loaded — {lyrics.lines.length} lines
+      </p>
+    );
+  }
 
   return (
     <div className="panel">
@@ -87,9 +128,7 @@ export function LyricPanel() {
           </div>
         </div>
       )}
-      {playback != null && (
-        <p className="lyric-placeholder">Lyrics coming in a later phase</p>
-      )}
+      {playback != null && renderLyricsStatus()}
     </div>
   );
 }
