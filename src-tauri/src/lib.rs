@@ -29,6 +29,20 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_positioner::init())
+        .plugin(
+            tauri_plugin_sql::Builder::new()
+                .add_migrations(
+                    "sqlite:lyrics.db",
+                    vec![tauri_plugin_sql::Migration {
+                        version: 1,
+                        description: "create_cached_lyrics",
+                        sql: "CREATE TABLE IF NOT EXISTS cached_lyrics \
+                              (key TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)",
+                        kind: tauri_plugin_sql::MigrationKind::Up,
+                    }],
+                )
+                .build(),
+        )
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);

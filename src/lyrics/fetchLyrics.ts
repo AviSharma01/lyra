@@ -1,5 +1,6 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import { parseLrc, type LyricLine } from "./parseLrc";
+import { normalizeName } from "./normalize";
 
 export type LyricsResult =
   | { status: "synced"; lines: LyricLine[] }
@@ -19,16 +20,6 @@ const BASE = "https://lrclib.net";
 // not the webview — plugin-http passes headers to Rust before the OS call.
 const HEADERS = { "User-Agent": "Lyra/0.1 (github.com/avisharma/lyra)" };
 
-// Strip ALL parentheticals before the remaster suffix so "Song - Remastered (feat. X)"
-// works: feat. strips first, then the $-anchored remaster regex fires cleanly.
-// [-–—] covers en/em dashes that streaming metadata uses instead of hyphens.
-function normalizeName(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/\s*\([^)]*\)/g, "")
-    .replace(/\s*[-–—]\s*(\d{4}\s+)?remaster(ed)?(\s+\d{4})?(\s+version)?\s*$/i, "")
-    .trim();
-}
 
 function evaluate(entry: LrclibEntry): LyricsResult {
   if (entry.instrumental) return { status: "instrumental" };

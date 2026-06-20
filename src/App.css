@@ -76,7 +76,7 @@ body,
 .lyric-area {
   width: 100%;
   padding: 0 28px;
-  height: 220px; /* 5 slots × 44px */
+  height: 300px; /* 5 slots × 60px */
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -97,22 +97,54 @@ body,
 /* ── Lyric lines ── */
 
 .lyric-slot {
-  height: 44px;
+  height: 60px;
 }
 
 .lyric-line {
-  height: 44px;
+  height: 60px;
   display: flex;
-  align-items: center;
-  font-size: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  color: #fff;
-  line-height: 1.4;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
   cursor: default;
   user-select: none;
 }
 
-.lyric-line--current {
+/* Original text: small and dimmed when translation is present */
+.lyric-original {
+  font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.3;
+}
+
+/* When no translation has loaded yet, original gets full primary styling */
+.lyric-line .lyric-original:only-child {
+  font-size: 16px;
+  color: #fff;
+  line-height: 1.4;
+}
+
+.lyric-translation {
+  font-size: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  color: #fff;
+  line-height: 1.4;
+}
+
+.lyric-line--current .lyric-original {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.lyric-line--current .lyric-original:only-child {
+  font-size: 19px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.lyric-line--current .lyric-translation {
   font-size: 19px;
   font-weight: 600;
 }
