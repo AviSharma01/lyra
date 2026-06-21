@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { fetchLyrics, type LyricsResult } from "./lyrics/fetchLyrics";
 import { type LyricLine } from "./lyrics/parseLrc";
 import { findCurrentLine } from "./lyrics/findCurrentLine";
-import { translateLines } from "./lyrics/translate";
+import { translateLines, type TranslationResult } from "./lyrics/translate";
 import { buildCacheKey, cacheGet, cacheSet } from "./lyrics/cache";
 
 interface SpotifyState {
@@ -27,12 +27,23 @@ type WindowSlot =
   | { type: "blank"; key: string }
   | { type: "line"; key: string; line: LyricLine; isCurrent: boolean; translation: string | null };
 
+// True when the model returned the line effectively unchanged (English pass-through).
+// Normalized so minor casing/punctuation changes from the model don't show doubled lines.
+function collapseEnglish(translation: string, original: string): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .trim()
+      .replace(/[.,!?;:'"''"…-]+$/, "");
+  return norm(translation) === norm(original);
+}
+
 // 5 slots: [above, current, +1, +2, +3]. Out-of-bounds positions become blank spacers.
 // Lines are keyed by their global index so Framer Motion tracks identity across window shifts.
 function buildWindow(
   lines: LyricLine[],
   currentIndex: number,
-  translations: string[] | null,
+  perLine: (string | null)[] | null,
 ): WindowSlot[] {
   return [-1, 0, 1, 2, 3].map((offset) => {
     const idx = currentIndex + offset;
@@ -44,7 +55,7 @@ function buildWindow(
       key: String(idx),
       line: lines[idx],
       isCurrent: offset === 0 && currentIndex >= 0,
-      translation: translations ? (translations[idx] ?? null) : null,
+      translation: perLine ? (perLine[idx] ?? null) : null,
     };
   });
 }
@@ -52,15 +63,15 @@ function buildWindow(
 const LyricStack = memo(function LyricStack({
   lines,
   currentIndex,
-  translations,
+  perLine,
 }: {
   lines: LyricLine[];
   currentIndex: number;
-  translations: string[] | null;
+  perLine: (string | null)[] | null;
 }) {
   return (
     <AnimatePresence mode="popLayout" initial={false}>
-      {buildWindow(lines, currentIndex, translations).map((slot) =>
+      {buildWindow(lines, currentIndex, perLine).map((slot) =>
         slot.type === "blank" ? (
           <motion.div key={slot.key} className="lyric-slot" layout />
         ) : (
@@ -74,9 +85,11 @@ const LyricStack = memo(function LyricStack({
             transition={{ duration: 0.25, ease: "easeInOut" }}
           >
             <span className="lyric-original">{slot.line.text || "♪"}</span>
-            {slot.line.text.trim() !== "" && slot.translation !== null && (
-              <span className="lyric-translation">{slot.translation || slot.line.text}</span>
-            )}
+            {slot.line.text.trim() !== "" &&
+              slot.translation !== null &&
+              !collapseEnglish(slot.translation, slot.line.text) && (
+                <span className="lyric-translation">{slot.translation}</span>
+              )}
           </motion.div>
         )
       )}
@@ -88,7 +101,7 @@ export function LyricPanel() {
   const [playback, setPlayback] = useState<Playback | undefined>(undefined);
   const [displayPosition, setDisplayPosition] = useState(0);
   const [lyrics, setLyrics] = useState<LyricsResult | "fetching" | null>(null);
-  const [translations, setTranslations] = useState<string[] | null>(null);
+  const [translationResult, setTranslationResult] = useState<TranslationResult | null>(null);
   const [currentIndex, setCurrentIndex] = useState(-1);
 
   const tickRef = useRef<{ positionMs: number; timestamp: number; playing: boolean } | null>(null);
@@ -142,14 +155,14 @@ export function LyricPanel() {
     if (!playback) {
       fetchedKeyRef.current = null;
       setLyrics(null);
-      setTranslations(null);
+      setTranslationResult(null);
       return;
     }
     const key = trackKey(playback);
     if (key === fetchedKeyRef.current) return;
     fetchedKeyRef.current = key;
     setLyrics("fetching");
-    setTranslations(null);
+    setTranslationResult(null);
 
     const timer = setTimeout(async () => {
       try {
@@ -158,7 +171,7 @@ export function LyricPanel() {
         if (cached) {
           console.log("[cache] hit:", ckey);
           setLyrics({ status: "synced", lines: cached.lines });
-          setTranslations(cached.translations);
+          setTranslationResult({ kind: "translated", perLine: cached.perLine });
           return;
         }
 
@@ -173,8 +186,10 @@ export function LyricPanel() {
         if (result.status !== "synced") return;
 
         const t = await translateLines(result.lines);
-        setTranslations(t);
-        await cacheSet(ckey, { lines: result.lines, translations: t });
+        if (t.kind !== "failed") {
+          setTranslationResult(t);
+          await cacheSet(ckey, { lines: result.lines, perLine: t.perLine });
+        }
       } catch {
         setLyrics({ status: "failed" });
       }
@@ -228,9 +243,11 @@ export function LyricPanel() {
         </div>
       );
     }
+    const perLine =
+      translationResult?.kind === "translated" ? translationResult.perLine : null;
     return (
       <div className="lyric-area">
-        <LyricStack lines={lyrics.lines} currentIndex={currentIndex} translations={translations} />
+        <LyricStack lines={lyrics.lines} currentIndex={currentIndex} perLine={perLine} />
       </div>
     );
   }

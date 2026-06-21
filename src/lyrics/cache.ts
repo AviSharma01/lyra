@@ -6,7 +6,7 @@ export { buildCacheKey };
 
 export interface CachedEntry {
   lines: LyricLine[];
-  translations: string[];
+  perLine: (string | null)[];
 }
 
 interface CacheRow {
@@ -28,7 +28,11 @@ export async function cacheGet(key: string): Promise<CachedEntry | null> {
       [key],
     );
     if (rows.length === 0) return null;
-    return JSON.parse(rows[0].data) as CachedEntry;
+    const raw = JSON.parse(rows[0].data) as Record<string, unknown>;
+    // Old entries stored `translations: string[]`; new shape uses `perLine: (string|null)[]`.
+    // Treat old-shaped entries as a miss so they re-translate with the new numbering scheme.
+    if (!Array.isArray(raw.perLine)) return null;
+    return { lines: raw.lines as LyricLine[], perLine: raw.perLine as (string | null)[] };
   } catch (err) {
     console.log("[cache] get error:", err);
     return null;
