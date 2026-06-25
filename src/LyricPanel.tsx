@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, memo } from "react";
+import { useEffect, useRef, useState, memo, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { motion, AnimatePresence } from "motion/react";
 import { fetchLyrics, type LyricsResult } from "./lyrics/fetchLyrics";
@@ -6,6 +6,7 @@ import { type LyricLine } from "./lyrics/parseLrc";
 import { findCurrentLine } from "./lyrics/findCurrentLine";
 import { translateLines, type TranslationResult } from "./lyrics/translate";
 import { buildCacheKey, cacheGet, cacheSet } from "./lyrics/cache";
+import { lyricWindowLayout } from "./lyrics/lyricWindowLayout";
 
 interface SpotifyState {
   track: string;
@@ -17,6 +18,9 @@ interface SpotifyState {
 }
 
 type Playback = SpotifyState | null;
+
+// Nominal slot height in px. Wrapped translations may be taller; overflow:hidden clips the rest.
+const SLOT_HEIGHT = 60;
 
 // Stable key representing a track identity — changes trigger a new fetch.
 function trackKey(p: SpotifyState): string {
@@ -38,14 +42,16 @@ function collapseEnglish(translation: string, original: string): boolean {
   return norm(translation) === norm(original);
 }
 
-// 5 slots: [above, current, +1, +2, +3]. Out-of-bounds positions become blank spacers.
+// offsets: e.g. [-1, 0, 1, 2, 3] for 5 slots with 1-above bias.
+// Out-of-bounds positions become blank spacers.
 // Lines are keyed by their global index so Framer Motion tracks identity across window shifts.
 function buildWindow(
   lines: LyricLine[],
   currentIndex: number,
   perLine: (string | null)[] | null,
+  offsets: number[],
 ): WindowSlot[] {
-  return [-1, 0, 1, 2, 3].map((offset) => {
+  return offsets.map((offset) => {
     const idx = currentIndex + offset;
     if (idx < 0 || idx >= lines.length) {
       return { type: "blank", key: `blank-${offset}` };
@@ -64,14 +70,19 @@ const LyricStack = memo(function LyricStack({
   lines,
   currentIndex,
   perLine,
+  lineCount,
 }: {
   lines: LyricLine[];
   currentIndex: number;
   perLine: (string | null)[] | null;
+  lineCount: number;
 }) {
+  const { above } = lyricWindowLayout(lineCount * SLOT_HEIGHT, SLOT_HEIGHT);
+  const offsets = Array.from({ length: lineCount }, (_, i) => i - above);
+
   return (
     <AnimatePresence mode="popLayout" initial={false}>
-      {buildWindow(lines, currentIndex, perLine).map((slot) =>
+      {buildWindow(lines, currentIndex, perLine, offsets).map((slot) =>
         slot.type === "blank" ? (
           <motion.div key={slot.key} className="lyric-slot" layout />
         ) : (
@@ -103,11 +114,15 @@ export function LyricPanel() {
   const [lyrics, setLyrics] = useState<LyricsResult | "fetching" | null>(null);
   const [translationResult, setTranslationResult] = useState<TranslationResult | null>(null);
   const [currentIndex, setCurrentIndex] = useState(-1);
+  // Integer line count; only updates when the count changes (not every resize pixel).
+  const [lineCount, setLineCount] = useState(5);
 
   const tickRef = useRef<{ positionMs: number; timestamp: number; playing: boolean } | null>(null);
   const fetchedKeyRef = useRef<string | null>(null);
   const linesRef = useRef<LyricLine[]>([]);
   const lastIndexRef = useRef<number>(-1);
+  const lineCountRef = useRef(5);
+  const observerRef = useRef<ResizeObserver | null>(null);
 
   useEffect(() => {
     const promise = listen<Playback>("playback", (event) => setPlayback(event.payload));
@@ -209,6 +224,24 @@ export function LyricPanel() {
     setCurrentIndex(-1);
   }, [lyrics]);
 
+  // Attached only to the real lyric-display div (not status divs) so observed height
+  // reflects the area available for lines. Only triggers a re-render when the integer
+  // count changes — not on every resize pixel — mirroring the lastIndexRef gate above.
+  const lyricAreaCallbackRef = useCallback((el: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!el) return;
+    observerRef.current = new ResizeObserver((entries) => {
+      const h = entries[0].contentRect.height;
+      const next = lyricWindowLayout(h, SLOT_HEIGHT).count;
+      if (next !== lineCountRef.current) {
+        lineCountRef.current = next;
+        setLineCount(next);
+      }
+    });
+    observerRef.current.observe(el);
+  }, []);
+
   const progress =
     playback && playback.duration_ms > 0
       ? Math.min(displayPosition / playback.duration_ms, 1)
@@ -246,21 +279,22 @@ export function LyricPanel() {
     const perLine =
       translationResult?.kind === "translated" ? translationResult.perLine : null;
     return (
-      <div className="lyric-area">
-        <LyricStack lines={lyrics.lines} currentIndex={currentIndex} perLine={perLine} />
+      <div className="lyric-area" ref={lyricAreaCallbackRef}>
+        <LyricStack lines={lyrics.lines} currentIndex={currentIndex} perLine={perLine} lineCount={lineCount} />
       </div>
     );
   }
 
   return (
     <div className="panel">
+      <div className="panel-drag-spacer" data-tauri-drag-region />
       {playback === undefined ? (
         <p className="status-text">Loading…</p>
       ) : playback === null ? (
         <p className="status-text">Open Spotify to see lyrics</p>
       ) : (
         <>
-          <div className="track-header">
+          <div className="track-header" data-tauri-drag-region>
             <p className="track-meta">
               {playback.track} · {playback.artist}
             </p>
@@ -271,6 +305,7 @@ export function LyricPanel() {
           {renderLyricsArea()}
         </>
       )}
+      <div className="panel-drag-spacer" data-tauri-drag-region />
     </div>
   );
 }

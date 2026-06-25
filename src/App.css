@@ -20,10 +20,14 @@ body,
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   overflow: hidden;
   gap: 16px;
-  padding: 20px 0;
+}
+
+.panel-drag-spacer {
+  height: 12px;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 /* ── No-Spotify / loading states ── */
@@ -72,13 +76,12 @@ body,
 
 /* ── Lyric area ── */
 
-/* Fixed height keeps the panel from resizing between lyric / no-lyric states. */
 .lyric-area {
   width: 100%;
   padding: 0 28px;
-  height: 300px; /* 5 slots × 60px */
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 .lyric-area--status {

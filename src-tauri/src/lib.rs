@@ -11,7 +11,7 @@ use tauri_plugin_positioner::{Position, WindowExt};
 fn start_poll<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     std::thread::spawn(move || loop {
         let state = spotify::fetch_playback();
-app.emit("playback", state).ok();
+        app.emit("playback", state).ok();
         std::thread::sleep(std::time::Duration::from_secs(1));
     });
 }
@@ -24,11 +24,18 @@ fn get_playback() -> Option<spotify::SpotifyState> {
     None
 }
 
+// Single source of truth for window bounds (logical pixels). Matches tauri.conf.json.
+const MAX_WIDTH: u32 = 360;
+const MAX_HEIGHT: u32 = 560;
+const MIN_WIDTH: u32 = 280;
+const MIN_HEIGHT: u32 = 275;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::new()
                 .add_migrations(
@@ -67,6 +74,7 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
+                    // Required so positioner knows where the tray icon lives (for TrayCenter).
                     tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
@@ -78,6 +86,21 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Clamp the window-state-restored size to [min, max] in logical pixels.
+            // macOS can double the saved size across relaunches (physical/logical confusion);
+            // one clamped cycle corrects the on-disk value on next close.
+            if let Some(win) = app.get_webview_window("main") {
+                if let (Ok(size), Ok(sf)) = (win.inner_size(), win.scale_factor()) {
+                    let lw = (size.width as f64 / sf).round() as u32;
+                    let lh = (size.height as f64 / sf).round() as u32;
+                    let cw = lw.clamp(MIN_WIDTH, MAX_WIDTH);
+                    let ch = lh.clamp(MIN_HEIGHT, MAX_HEIGHT);
+                    if cw != lw || ch != lh {
+                        let _ = win.set_size(tauri::LogicalSize::new(cw, ch));
+                    }
+                }
+            }
 
             Ok(())
         })
@@ -109,7 +132,17 @@ fn toggle_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
     } else {
-        let _ = window.move_window(Position::TrayCenter);
+        // On first-ever launch there is no saved state file, so snap near the tray.
+        // On subsequent launches window-state has already restored the saved position
+        // during setup — do NOT override it here.
+        let has_saved_position = app
+            .path()
+            .app_data_dir()
+            .map(|d| d.join(".window-state.json").exists())
+            .unwrap_or(true);
+        if !has_saved_position {
+            let _ = window.move_window(Position::TrayCenter);
+        }
         let _ = window.show();
         let _ = window.set_focus();
     }
