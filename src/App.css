@@ -15,13 +15,33 @@ body,
 .panel {
   width: 100%;
   height: 100vh;
-  background: rgba(18, 16, 20, 0.82);
+  /* Transparent so native vibrancy shows through. */
+  background: transparent;
   border-radius: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
   overflow: hidden;
   gap: 16px;
+  position: relative;
+}
+
+/* Dark scrim over the frost — adds contrast without replacing vibrancy.
+   Adjust alpha (0.0–0.35) if lyrics need more or less contrast against the blur. */
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Push all direct children above the scrim. */
+.panel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .panel-drag-spacer {
@@ -34,7 +54,7 @@ body,
 
 .status-text {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.45);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   text-align: center;
   padding: 0 28px;
@@ -44,33 +64,51 @@ body,
 
 .track-header {
   width: 100%;
-  padding: 0 28px;
+  padding: 0 16px 0 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex-shrink: 0;
 }
 
+/* Row: thumbnail + title/artist side by side */
+.track-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.track-art {
+  width: 36px;
+  height: 36px;
+  border-radius: 5px;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+
 .track-meta {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.75);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .progress-bar {
   width: 100%;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 1px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.65);
   border-radius: 1px;
 }
 

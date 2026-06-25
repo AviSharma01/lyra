@@ -1,5 +1,8 @@
 mod spotify;
 
+#[cfg(target_os = "macos")]
+use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -86,6 +89,12 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            #[cfg(target_os = "macos")]
+            if let Some(win) = app.get_webview_window("main") {
+                apply_vibrancy(&win, NSVisualEffectMaterial::HudWindow, None, Some(14.0))
+                    .expect("failed to apply vibrancy");
+            }
 
             // Clamp the window-state-restored size to [min, max] in logical pixels.
             // macOS can double the saved size across relaunches (physical/logical confusion);

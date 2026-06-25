@@ -15,6 +15,7 @@ interface SpotifyState {
   duration_ms: number;
   position_ms: number;
   state: "playing" | "paused" | "stopped";
+  artwork_data?: string;
 }
 
 type Playback = SpotifyState | null;
@@ -295,9 +296,14 @@ export function LyricPanel() {
       ) : (
         <>
           <div className="track-header" data-tauri-drag-region>
-            <p className="track-meta">
-              {playback.track} · {playback.artist}
-            </p>
+            <div className="track-info-row">
+              {playback.artwork_data && (
+                <img className="track-art" src={playback.artwork_data} alt="" />
+              )}
+              <p className="track-meta">
+                {playback.track} · {playback.artist}
+              </p>
+            </div>
             <div className="progress-bar">
               <div className="progress-fill" style={{ width: `${progress * 100}%` }} />
             </div>
