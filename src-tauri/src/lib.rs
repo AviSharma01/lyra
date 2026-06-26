@@ -4,10 +4,11 @@ mod spotify;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+use tauri_plugin_store::StoreExt;
 use tauri_plugin_positioner::{Position, WindowExt};
 
 #[cfg(target_os = "macos")]
@@ -36,6 +37,7 @@ const MIN_HEIGHT: u32 = 275;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
@@ -59,20 +61,54 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             start_poll(app.handle().clone());
 
+            // Read saved theme to set the initial checkmark state.
+            let saved_theme = app
+                .store("settings.json")
+                .ok()
+                .and_then(|s| s.get("theme"))
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| "minimal".to_string());
+            let is_immersive = saved_theme == "immersive";
+
+            let theme_minimal = CheckMenuItem::with_id(
+                app, "theme_minimal", "Minimal", true, !is_immersive, None::<&str>,
+            )?;
+            let theme_immersive = CheckMenuItem::with_id(
+                app, "theme_immersive", "Immersive", true, is_immersive, None::<&str>,
+            )?;
+            let theme_menu = Submenu::with_items(
+                app, "Theme", true, &[&theme_minimal, &theme_immersive],
+            )?;
+
             let show_hide =
                 MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
+            // "Settings" is pre-existing dead code — disabled placeholder, not yet built.
             let settings =
                 MenuItem::with_id(app, "settings", "Settings", false, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_hide, &settings, &quit])?;
+            let menu = Menu::with_items(app, &[&show_hide, &theme_menu, &settings, &quit])?;
+
+            // Clone items into the closure — Arc clones share the live menu item state.
+            let minimal_ref = theme_minimal.clone();
+            let immersive_ref = theme_immersive.clone();
 
             TrayIconBuilder::new()
                 .icon(circle_icon(22))
                 .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id.as_ref() {
+                .on_menu_event(move |app, event| match event.id.as_ref() {
                     "show_hide" => toggle_window(app),
+                    "theme_minimal" => {
+                        let _ = minimal_ref.set_checked(true);
+                        let _ = immersive_ref.set_checked(false);
+                        app.emit("set-theme", "minimal").ok();
+                    }
+                    "theme_immersive" => {
+                        let _ = minimal_ref.set_checked(false);
+                        let _ = immersive_ref.set_checked(true);
+                        app.emit("set-theme", "immersive").ok();
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
