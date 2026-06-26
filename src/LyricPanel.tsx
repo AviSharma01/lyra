@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, memo, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { load } from "@tauri-apps/plugin-store";
 import { motion, AnimatePresence } from "motion/react";
 import { fetchLyrics, type LyricsResult } from "./lyrics/fetchLyrics";
 import { type LyricLine } from "./lyrics/parseLrc";
@@ -117,6 +118,27 @@ export function LyricPanel() {
   const [currentIndex, setCurrentIndex] = useState(-1);
   // Integer line count; only updates when the count changes (not every resize pixel).
   const [lineCount, setLineCount] = useState(5);
+  const [theme, setTheme] = useState<"minimal" | "immersive">("minimal");
+
+  // Restore saved theme. Window starts hidden so the async read completes before first show.
+  useEffect(() => {
+    load("settings.json").then(async (store) => {
+      const saved = await store.get<string>("theme");
+      if (saved === "minimal" || saved === "immersive") setTheme(saved);
+    });
+  }, []);
+
+  // Tray toggle: switch theme and persist the choice.
+  useEffect(() => {
+    const promise = listen<string>("set-theme", async (event) => {
+      const t = event.payload as "minimal" | "immersive";
+      setTheme(t);
+      const store = await load("settings.json");
+      await store.set("theme", t);
+      await store.save();
+    });
+    return () => { promise.then((u) => u()); };
+  }, []);
 
   const tickRef = useRef<{ positionMs: number; timestamp: number; playing: boolean } | null>(null);
   const fetchedKeyRef = useRef<string | null>(null);
@@ -287,7 +309,12 @@ export function LyricPanel() {
   }
 
   return (
-    <div className="panel">
+    <div className="panel" data-theme={theme}>
+      <img
+        className="immersive-backing"
+        src={playback?.artwork_data ?? ""}
+        alt=""
+      />
       <div className="panel-drag-spacer" data-tauri-drag-region />
       {playback === undefined ? (
         <p className="status-text">Loading…</p>
