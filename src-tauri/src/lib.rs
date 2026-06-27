@@ -3,18 +3,73 @@ mod spotify;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
+use std::sync::Mutex;
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem, Submenu},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
 use tauri_plugin_store::StoreExt;
 use tauri_plugin_positioner::{Position, WindowExt};
 
+// Last known "Title · Artist" string; None when nothing is playing.
+// Written by the poll thread, read by toggle_window for immediate tray updates.
+struct NowPlayingText(Mutex<Option<String>>);
+
+// Truncates to at most max_chars Unicode scalar values, appending "…" if cut.
+// Uses chars(), not bytes, so CJK/multibyte titles are safe.
+fn truncate_for_tray(s: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max_chars {
+        s.to_string()
+    } else {
+        chars[..max_chars.saturating_sub(1)].iter().collect::<String>() + "…"
+    }
+}
+
+// Sets or clears the menu-bar title beside the tray icon.
+// Panel visible or nothing playing → clear (icon only).
+// Panel hidden and track known → show truncated "Title · Artist".
+fn apply_tray_title<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    full_text: Option<&str>,
+    window_visible: bool,
+) {
+    let Some(tray) = app.tray_by_id("main") else { return };
+    if window_visible || full_text.is_none() {
+        // None is a no-op in tray-icon's macOS impl; empty string actually clears the title.
+        let _ = tray.set_title(Some(""));
+    } else {
+        let truncated = truncate_for_tray(full_text.unwrap(), 35);
+        let _ = tray.set_title(Some(truncated));
+    }
+}
+
 #[cfg(target_os = "macos")]
-fn start_poll<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+fn start_poll<R: tauri::Runtime>(app: tauri::AppHandle<R>, now_playing_item: MenuItem<R>) {
     std::thread::spawn(move || loop {
         let state = spotify::fetch_playback();
+
+        // Guard against empty track (Spotify running but no track loaded → stray " · ").
+        let full_text: Option<String> = state.as_ref()
+            .filter(|s| !s.track.is_empty())
+            .map(|s| format!("{} · {}", s.track, s.artist));
+
+        // Update the dropdown display item (always shows full text).
+        let _ = now_playing_item.set_text(full_text.as_deref().unwrap_or("—"));
+
+        // Cache for toggle_window's immediate update.
+        if let Ok(mut guard) = app.state::<NowPlayingText>().0.lock() {
+            *guard = full_text.clone();
+        }
+
+        // Set or clear the menu-bar title based on current window visibility.
+        let window_visible = app
+            .get_webview_window("main")
+            .map(|w| w.is_visible().unwrap_or(false))
+            .unwrap_or(false);
+        apply_tray_title(&app, full_text.as_deref(), window_visible);
+
         app.emit("playback", state).ok();
         std::thread::sleep(std::time::Duration::from_secs(1));
     });
@@ -56,10 +111,10 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            app.manage(NowPlayingText(Mutex::new(None)));
+
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            #[cfg(target_os = "macos")]
-            start_poll(app.handle().clone());
 
             // Read saved theme to set the initial checkmark state.
             let saved_theme = app
@@ -80,19 +135,26 @@ pub fn run() {
                 app, "Theme", true, &[&theme_minimal, &theme_immersive],
             )?;
 
+            // Disabled display item at the top of the dropdown; text updated by the poll.
+            let now_playing =
+                MenuItem::with_id(app, "now_playing", "—", false, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(app)?;
             let show_hide =
                 MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
             // "Settings" is pre-existing dead code — disabled placeholder, not yet built.
             let settings =
                 MenuItem::with_id(app, "settings", "Settings", false, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_hide, &theme_menu, &settings, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[&now_playing, &separator, &show_hide, &theme_menu, &settings, &quit],
+            )?;
 
             // Clone items into the closure — Arc clones share the live menu item state.
             let minimal_ref = theme_minimal.clone();
             let immersive_ref = theme_immersive.clone();
 
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main")
                 .icon(circle_icon(22))
                 .icon_as_template(true)
                 .menu(&menu)
@@ -147,6 +209,9 @@ pub fn run() {
                 }
             }
 
+            #[cfg(target_os = "macos")]
+            start_poll(app.handle().clone(), now_playing.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![get_playback])
@@ -174,8 +239,9 @@ fn toggle_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
-    if window.is_visible().unwrap_or(false) {
+    let will_be_visible = if window.is_visible().unwrap_or(false) {
         let _ = window.hide();
+        false
     } else {
         // On first-ever launch there is no saved state file, so snap near the tray.
         // On subsequent launches window-state has already restored the saved position
@@ -190,5 +256,55 @@ fn toggle_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         }
         let _ = window.show();
         let _ = window.set_focus();
+        true
+    };
+
+    // Immediate tray update — don't wait up to 1s for the next poll tick.
+    let full_text = app
+        .state::<NowPlayingText>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|g| g.clone());
+    apply_tray_title(app, full_text.as_deref(), will_be_visible);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_for_tray;
+
+    #[test]
+    fn short_string_unchanged() {
+        assert_eq!(truncate_for_tray("Hello · World", 35), "Hello · World");
+    }
+
+    #[test]
+    fn exactly_at_limit_unchanged() {
+        let s = "a".repeat(35);
+        assert_eq!(truncate_for_tray(&s, 35), s);
+    }
+
+    #[test]
+    fn long_ascii_truncated() {
+        let s = "a".repeat(36);
+        let result = truncate_for_tray(&s, 35);
+        assert_eq!(result.chars().count(), 35);
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn cjk_truncated_safely() {
+        // Each CJK char is 3 bytes — byte slicing would panic; char slicing is safe.
+        // String is 40 chars, so truncation must fire.
+        let s = "夜に駆ける · YOASOBI · これは非常に長いタイトルです！！！！！";
+        assert!(s.chars().count() > 35, "test string must exceed limit");
+        let result = truncate_for_tray(s, 35);
+        assert!(result.chars().count() <= 35);
+        assert!(result.ends_with('…'));
+    }
+
+    #[test]
+    fn empty_string_unchanged() {
+        assert_eq!(truncate_for_tray("", 35), "");
     }
 }
