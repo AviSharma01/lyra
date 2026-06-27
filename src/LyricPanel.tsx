@@ -21,8 +21,8 @@ interface SpotifyState {
 
 type Playback = SpotifyState | null;
 
-// Nominal slot height in px. Wrapped translations may be taller; overflow:hidden clips the rest.
-const SLOT_HEIGHT = 60;
+// Nominal slot height in px: ~44px pair content + 20px between-pair gap + 8px buffer.
+const SLOT_HEIGHT = 72;
 
 // Stable key representing a track identity — changes trigger a new fetch.
 function trackKey(p: SpotifyState): string {

@@ -87,7 +87,7 @@ fn get_playback() -> Option<spotify::SpotifyState> {
 const MAX_WIDTH: u32 = 360;
 const MAX_HEIGHT: u32 = 560;
 const MIN_WIDTH: u32 = 280;
-const MIN_HEIGHT: u32 = 275;
+const MIN_HEIGHT: u32 = 320;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
