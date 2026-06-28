@@ -39,8 +39,8 @@ fn apply_tray_title<R: tauri::Runtime>(
     if window_visible || full_text.is_none() {
         // None is a no-op in tray-icon's macOS impl; empty string actually clears the title.
         let _ = tray.set_title(Some(""));
-    } else {
-        let truncated = truncate_for_tray(full_text.unwrap(), 35);
+    } else if let Some(text) = full_text {
+        let truncated = truncate_for_tray(text, 35);
         let _ = tray.set_title(Some(truncated));
     }
 }
@@ -141,13 +141,10 @@ pub fn run() {
             let separator = PredefinedMenuItem::separator(app)?;
             let show_hide =
                 MenuItem::with_id(app, "show_hide", "Show/Hide", true, None::<&str>)?;
-            // "Settings" is pre-existing dead code — disabled placeholder, not yet built.
-            let settings =
-                MenuItem::with_id(app, "settings", "Settings", false, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
-                &[&now_playing, &separator, &show_hide, &theme_menu, &settings, &quit],
+                &[&now_playing, &separator, &show_hide, &theme_menu, &quit],
             )?;
 
             // Clone items into the closure — Arc clones share the live menu item state.

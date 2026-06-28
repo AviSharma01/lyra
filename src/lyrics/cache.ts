@@ -34,7 +34,7 @@ export async function cacheGet(key: string): Promise<CachedEntry | null> {
     if (!Array.isArray(raw.perLine)) return null;
     return { lines: raw.lines as LyricLine[], perLine: raw.perLine as (string | null)[] };
   } catch (err) {
-    console.log("[cache] get error:", err);
+    if (import.meta.env.DEV) console.log("[cache] get error:", err);
     return null;
   }
 }
@@ -47,6 +47,6 @@ export async function cacheSet(key: string, entry: CachedEntry): Promise<void> {
       [key, JSON.stringify(entry), Date.now()],
     );
   } catch (err) {
-    console.log("[cache] set error:", err);
+    if (import.meta.env.DEV) console.log("[cache] set error:", err);
   }
 }

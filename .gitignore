@@ -30,6 +30,8 @@ CLAUDE.md
 
 # Tauri / Rust
 src-tauri/target/
+*.db
+*.sqlite
 
 # Secrets (none yet, but lock it in now)
 .env

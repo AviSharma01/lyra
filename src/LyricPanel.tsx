@@ -207,7 +207,6 @@ export function LyricPanel() {
         const ckey = buildCacheKey(playback.track, playback.artist);
         const cached = await cacheGet(ckey);
         if (cached) {
-          console.log("[cache] hit:", ckey);
           setLyrics({ status: "synced", lines: cached.lines });
           setTranslationResult({ kind: "translated", perLine: cached.perLine });
           return;

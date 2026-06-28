@@ -46,17 +46,15 @@ export async function fetchLyrics(
     const exactUrl = `${BASE}/api/get?${exactParams}`;
 
     const exactRes = await fetch(exactUrl, { headers: HEADERS });
-    console.log(`[lyrics] GET ${exactUrl} → ${exactRes.status} (${Date.now() - start}ms)`);
 
     if (exactRes.ok) {
       const result = evaluate((await exactRes.json()) as LrclibEntry);
-      console.log(`[lyrics] exact match: status=${result.status} (${Date.now() - start}ms total)`);
       return result;
     }
 
     // 404 = normal no-exact-match signal; anything else is a server error.
     if (exactRes.status !== 404) {
-      console.log(`[lyrics] non-404 from /api/get; failing (${Date.now() - start}ms total)`);
+      if (import.meta.env.DEV) console.log(`[lyrics] non-404 from /api/get; failing (${Date.now() - start}ms total)`);
       return { status: "failed" };
     }
 
@@ -65,7 +63,7 @@ export async function fetchLyrics(
     const searchRes = await fetch(searchUrl, { headers: HEADERS });
 
     if (!searchRes.ok) {
-      console.log(`[lyrics] search → ${searchRes.status}; failing (${Date.now() - start}ms total)`);
+      if (import.meta.env.DEV) console.log(`[lyrics] search → ${searchRes.status}; failing (${Date.now() - start}ms total)`);
       return { status: "failed" };
     }
 
@@ -79,13 +77,7 @@ export async function fetchLyrics(
       return normalizeName(r.trackName) === normalizedTrack;
     });
 
-    console.log(
-      `[lyrics] search → ${results.length} results, ${candidates.length} qualified` +
-      ` (${Date.now() - start}ms)`,
-    );
-
     if (!candidates.length) {
-      console.log(`[lyrics] no qualifying match (${Date.now() - start}ms total)`);
       return { status: "none" };
     }
 
@@ -94,13 +86,10 @@ export async function fetchLyrics(
         ? a
         : b,
     );
-    console.log(
-      `[lyrics] matched "${best.trackName}" dur=${best.duration}s (${Date.now() - start}ms total)`,
-    );
 
     return evaluate(best);
   } catch (err) {
-    console.log(`[lyrics] fetch threw: ${err} (${Date.now() - start}ms elapsed)`);
+    if (import.meta.env.DEV) console.log(`[lyrics] fetch threw: ${err} (${Date.now() - start}ms elapsed)`);
     return { status: "failed" };
   }
 }
