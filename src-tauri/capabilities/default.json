@@ -18,6 +18,9 @@
     "sql:allow-select",
     "store:default",
     "window-state:default",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }

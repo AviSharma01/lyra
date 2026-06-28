@@ -4,6 +4,7 @@ mod spotify;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 use std::sync::Mutex;
+use tauri_plugin_autostart::ManagerExt;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -92,6 +93,10 @@ const MIN_HEIGHT: u32 = 320;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_positioner::init())
@@ -112,6 +117,12 @@ pub fn run() {
         )
         .setup(|app| {
             app.manage(NowPlayingText(Mutex::new(None)));
+
+            // Enable launch-at-login once; skip if already registered to avoid rewriting the plist.
+            let launcher = app.autolaunch();
+            if !launcher.is_enabled().unwrap_or(false) {
+                let _ = launcher.enable();
+            }
 
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);

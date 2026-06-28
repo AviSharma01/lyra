@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "lyra",
+  "productName": "Lyra",
   "version": "0.1.0",
   "identifier": "com.avi.lyra",
   "build": {
@@ -30,7 +30,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost https://lrclib.net http://localhost:11434; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost https://lrclib.net http://localhost:11434; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
