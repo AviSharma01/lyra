@@ -111,6 +111,15 @@ pub fn run() {
                         sql: "CREATE TABLE IF NOT EXISTS cached_lyrics \
                               (key TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)",
                         kind: tauri_plugin_sql::MigrationKind::Up,
+                    },
+                    tauri_plugin_sql::Migration {
+                        version: 2,
+                        description: "create_lookup_log",
+                        sql: "CREATE TABLE IF NOT EXISTS lookup_log \
+                              (id INTEGER PRIMARY KEY, ts INTEGER, track TEXT, artist TEXT, \
+                              album TEXT, duration_ms INTEGER, outcome TEXT, reason TEXT, \
+                              detail TEXT)",
+                        kind: tauri_plugin_sql::MigrationKind::Up,
                     }],
                 )
                 .build(),

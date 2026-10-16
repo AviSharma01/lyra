@@ -15,7 +15,7 @@ interface CacheRow {
 
 let db: Awaited<ReturnType<typeof Database.load>> | null = null;
 
-async function getDb() {
+export async function getDb() {
   if (!db) db = await Database.load("sqlite:lyrics.db");
   return db;
 }
